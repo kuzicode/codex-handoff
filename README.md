@@ -6,6 +6,10 @@
 
 ## 工作流
 
+<p align="center"><img src="assets/workflow.svg" alt="codex-handoff 工作流：用户 / 指挥官 / Codex 三条泳道" width="960"></p>
+
+<details><summary>文字版</summary>
+
 ```
 指挥官规划（写进项目计划，如 docs/plan.md）→ 用户确认
   → new 生成交接文件（仓库外）→ run：Codex 实施一块，结果自动追加回交接文件
@@ -13,6 +17,8 @@
   → resume 修复（最多 3 轮，仍不过就找用户）；高风险改动加 Codex 只读 review 作第二意见
   → 指挥官提交（按块），把结果和提交号摘要回项目计划 → 用户口令后 push / 部署
 ```
+
+</details>
 
 同一时刻只有一个写手；一个任务只认一个指挥官。
 
@@ -63,6 +69,7 @@ codex-task.sh run ... --dry-run                                # 只打印将执
 | `skills/codex-handoff/references/review-checklist.md` | 收货 review 清单 |
 | `skills/codex-handoff/references/commanders.md` | 各指挥官 agent 的差异说明 |
 | `tests/smoke.sh` | 离线自检（不调用 Codex） |
+| `assets/workflow.svg` | README 动态流程图（自适应浅色 / 深色） |
 
 ## 版本
 
