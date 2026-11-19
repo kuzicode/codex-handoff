@@ -1,45 +1,61 @@
-# Brief template
+# Handoff file template
 
-Copy, fill in, and save as a file (e.g. `<tmp>/brief-<block>.md`). Then pass it with `--brief`.
-Write it in the user's language. Be concrete: name the files and functions, and give commands that can be copied and run as they are.
+A handoff file is the **work order for one block** of an already-approved plan. It is not a second plan.
+- It references the plan of record (e.g. `docs/plan.md` M3, or an Issue / PR) instead of restating goals.
+- It adds only what the plan lacks: block scope, files not to touch, stop conditions, hard limits, runnable acceptance commands and the report format.
+
+Create one with `codex-task.sh new --cwd <repo> --slug <name> --plan-ref <M3-2>`. That fills in the skeleton below and stores the file outside the repo.
+Write it in the user's language. After each `run` / `resume`, Codex's report is appended under `## Result — …`.
 
 ```markdown
-## Background
-Why this change exists, the current behaviour / bug, and the key files and functions involved.
-Link the plan section if there is one (e.g. docs/plan.md "M12").
+# Handoff: <block title>
+
+Plan ref: <PLAN_REF>   ·   Repo: <REPO>
 
 ## Scope (this block only)
 - Do: …
-- Do NOT: … (out-of-scope refactors, other modules, docs other than CHANGELOG)
+- Key files / functions: …
+
+## Non-goals / do not touch
+- Out of scope: … (other modules, unrelated refactors)
+- Do not edit: AGENTS.md, docs/plan*.md, docs/issues*.md (the commander maintains them)
+
+## Stop conditions
+Stop and report instead of expanding scope if:
+- the change needs files or modules outside Scope;
+- the plan is ambiguous or contradicts the code you find;
+- acceptance cannot pass without weakening a test or a safety check.
 
 ## Hard limits
-- No deploy / ssh / real orders / private or production API calls.
-- Do not read or modify .env, secrets/, keys/, real config files; do not run git write commands.
-- Tests must be hermetic (temp dirs for runtime files, HTTP stubbed).
-- Anything you cannot verify because of the sandbox (ports, network, .git) → list it under
-  "Unverified". Do not rewrite or weaken tests to get around the sandbox.
+- No deploy / ssh / real orders or payments / private or production API calls.
+- Do not read or modify .env, secrets/, keys/, or real config files. Do not run git write commands.
+- Tests must be hermetic: temp dirs for runtime files (DB, logs, caches, state), and HTTP stubbed.
+- Anything you cannot verify because of the sandbox (ports, network, .git) → "Unverified".
+  Never rewrite or weaken tests to get around the sandbox.
 
 ## Acceptance
-Commands to run from the repo root, with the expected result:
-    <test command>            # expect: no FAIL
-    <lint / typecheck>        # expect: clean
-    <hash check of runtime files before/after>   # expect: identical
+Run from the repo root (expected result in comments):
+    <test command>                                  # expect: no FAIL
+    <lint / typecheck>                              # expect: clean
+    <hash runtime files before/after the suite>     # expect: identical
 
 ## Report format
 1. Changed files
-2. Deviations from this brief, with reasons
+2. Deviations from this handoff, with reasons
 3. Unverified items
-4. Full output of the acceptance commands
+4. Issue candidates (non-trivial bugs found or fixed; the commander records them)
+5. Out-of-scope findings / tech debt (not fixed; the commander decides)
+6. Full output of the acceptance commands
 Do not end the report with a question.
 ```
 
-## Fix brief (for `resume`)
+## Fix round (for `resume`)
 
-Keep it short. The session already has the context.
+Write the fix round as a short file of its own, or append it under the handoff file. The session already has the context, so keep it short.
 
 ```markdown
-Review findings to fix (keep everything else unchanged):
-1. <file:line> — <what is wrong> → <expected behaviour>
-2. …
+Fix round <n> — findings to fix (keep everything else unchanged):
+1. [P0] <file:line> — <what is wrong> → <expected behaviour>
+2. [P1] …
 Re-run the acceptance commands and report in the same format. Do not end with a question.
 ```

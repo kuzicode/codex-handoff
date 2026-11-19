@@ -7,11 +7,14 @@
 ## 工作流
 
 ```
-指挥官规划 → 用户确认 → Codex 实施（一次一块）→ 指挥官 review（重跑验证，不信报告）
-                                  ↑                │
-                                  └── resume 修复 ──┘   高风险改动：Codex 只读 review 作第二意见
-指挥官提交（按块）→ 用户口令后 push / 部署（只部署已提交版本）
+指挥官规划（写进项目计划，如 docs/plan.md）→ 用户确认
+  → new 生成交接文件（仓库外）→ run：Codex 实施一块，结果自动追加回交接文件
+  → 指挥官 review（重跑验证，P0/P1/P2 分级，自己不改 Codex 的块）
+  → resume 修复（最多 3 轮，仍不过就找用户）；高风险改动加 Codex 只读 review 作第二意见
+  → 指挥官提交（按块），把结果和提交号摘要回项目计划 → 用户口令后 push / 部署
 ```
+
+同一时刻只有一个写手；一个任务只认一个指挥官。
 
 ## 安装
 
@@ -31,20 +34,23 @@ npx skills add kuzicode/codex-handoff -g -a claude-code -a antigravity
 在指挥官 agent 里直接说"把这一块交给 Codex 实现"，agent 会按 `SKILL.md` 的流程执行。底层统一调用：
 
 ```bash
-codex-task.sh check                                          # Codex 是否安装、是否登录
-codex-task.sh run    --cwd <repo> --brief brief.md --effort high
-codex-task.sh resume --cwd <repo> --brief fix.md             # 续接同一个 Codex 会话修复
-codex-task.sh review --cwd <repo> --uncommitted --focus "资金路径"   # 只读第二意见
-codex-task.sh run ... --dry-run                              # 只打印将执行的 codex 命令
+codex-task.sh check                                            # Codex 是否安装、是否登录
+codex-task.sh new    --cwd <repo> --slug alerts --plan-ref M3-2   # 生成交接文件（仓库外），打印路径
+codex-task.sh list   --cwd <repo>                              # 列出该仓库的交接文件（新会话接手用）
+codex-task.sh run    --cwd <repo> --brief <handoff.md> --effort high [--worktree]
+codex-task.sh resume --cwd <repo> --brief fix.md --append-to <handoff.md>   # 续接同一会话修复
+codex-task.sh review --cwd <repo> --uncommitted --focus "资金路径"          # 只读第二意见
+codex-task.sh run ... --dry-run                                # 只打印将执行的 codex 命令
 ```
 
-报告写在仓库之外的临时目录（`$TMPDIR/codex-handoff/…/report.md`），脚本结束时打印报告内容。
+交接文件和日志放在仓库外的 `~/.local/state/codex-handoff/<repo>/`（可用 `CODEX_HANDOFF_HOME` 改），不会进入仓库；每轮 Codex 报告自动追加到交接文件末尾。
 
 ## 设计原则
 
 - **指挥官无关**：只依赖 `codex exec` CLI 和 bash，不依赖任何 agent 的私有插件。各 agent 的差异（怎么等长任务、读哪个规则文件）见 `references/commanders.md`。
 - **安全默认**：使用 `workspace-write` 沙箱；从不传 `--dangerously-*`，也不传 `--model`（模型用账号默认）。
-- **规则单一来源**：项目规则放 `AGENTS.md`，Codex 和指挥官都读它；交接说明只写本次任务。
+- **规则单一来源**：项目规则放 `AGENTS.md`，Codex 和指挥官都读它；`CLAUDE.md` / `GEMINI.md` 用软链指向它（比 `@AGENTS.md` 导入更稳，子目录启动时导入可能不生效）。
+- **不另起一份计划**：计划的唯一来源由项目规则决定（如 `docs/plan.md` 或 Issue / PR）。交接文件只是某一块的执行单，引用计划、不复述；`plan.md` / `issues.md` 只由指挥官写，Codex 在报告里列「ISS 候选」「范围外发现」。
 - **验证不外包**：沙箱里跑不了的验证（`.git`、端口、网络）报告为"未验证项"，由指挥官在本机补跑，禁止为了绕开沙箱改写测试。
 
 ## 文件
@@ -57,6 +63,11 @@ codex-task.sh run ... --dry-run                              # 只打印将执�
 | `skills/codex-handoff/references/review-checklist.md` | 收货 review 清单 |
 | `skills/codex-handoff/references/commanders.md` | 各指挥官 agent 的差异说明 |
 | `tests/smoke.sh` | 离线自检（不调用 Codex） |
+
+## 版本
+
+- **v0.2**（2026-11-20）：交接文件（`new` / `list` / 结果自动追加）、停止条件与非目标、P0/P1/P2 分级、修复上限 3 轮、单写手与单指挥官、可选 `--worktree`、与项目 harness 的文档写权约定。
+- **v0.1**（2026-11-19）：`check` / `run` / `resume` / `review`。
 
 ## License
 

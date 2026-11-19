@@ -7,52 +7,82 @@ description: Hand a scoped implementation task to the OpenAI Codex CLI and revie
 
 You are the **commander**: you plan, the user approves, **Codex implements**, you review and commit.
 Codex is the **executor**: it runs in a sandbox, edits files, and reports back.
+At any moment there is **one writer**. While Codex runs, you don't edit the repo. While you review, Codex is idle.
 
-All Codex calls go through one script, so the commander never needs to remember CLI quirks:
+All Codex calls go through one script:
 
 ```bash
 S=<this skill dir>/scripts/codex-task.sh
-$S check                                              # codex installed + logged in?
-$S run    --cwd <repo> --brief <brief.md> [--effort high]
-$S resume --cwd <repo> --brief <fix.md>               # continue the same Codex session
+$S check                                                  # codex installed + logged in?
+$S new    --cwd <repo> --slug <name> --plan-ref <M3-2>   # create a handoff file, prints its path
+$S list   --cwd <repo>                                    # handoff files for this repo (resume context)
+$S run    --cwd <repo> --brief <handoff.md> [--effort high] [--worktree]
+$S resume --cwd <repo> --brief <fix.md> --append-to <handoff.md>
 $S review --cwd <repo> [--uncommitted|--base main|--commit SHA] [--focus "money paths"]
-$S run ... --dry-run                                  # print the exact codex command
+$S <run|resume|review> ... --dry-run                      # print the exact codex command
 ```
 
-The script prints Codex's final report and its path (`report.md` in a temp dir outside the repo).
+After `run` / `resume`, the script appends Codex's report to the handoff file under `## Result — …` and prints it.
 It never passes `--model` (the account default is used) and never uses `--dangerously-*` flags.
+
+## Where things live
+
+The script assumes the project's own rules decide where plans and state go. It does not invent a second plan.
+
+| What | Where | Who writes it |
+|---|---|---|
+| Long-lived rules | `AGENTS.md`. Codex reads it too; `CLAUDE.md` / `GEMINI.md` should be symlinks to it | commander, with the user |
+| **Plan of record** (goal, approach, files, acceptance) | wherever the project's rules say: e.g. `docs/plan.md`, or the Issue / PR description | commander, before handoff |
+| **Handoff file**: work order for one block, plus Codex results | outside the repo: `~/.local/state/codex-handoff/<repo>/` (via `new`) | commander writes it; the script appends results |
+| Issue log / tech debt / plan checkboxes | the project's docs (e.g. `docs/issues.md`, `docs/plan.md`) | **commander only**. Codex lists candidates in its report |
+| Code, tests, changelog | repo | Codex |
+
+Why the handoff file stays out of the repo:
+- It is an execution artifact, not the authority, so it never competes with the plan.
+- It can never leak into a public repo.
+- It still survives across sessions: a new commander session runs `list` and reads the file to pick up where things stand.
+
+Durable outcomes go back into the plan of record: a short summary plus the commit hash on the plan's checkbox, and the issue log if a non-trivial bug was found.
 
 ## Workflow
 
-1. **Slice.** One handoff = one block (e.g. dashboard → alerts → trading). Never hand over a whole milestone.
-2. **Write the brief to a file** using `references/brief-template.md`. Write it in the user's language.
-   Put only this task in it. Project rules live in `AGENTS.md`, which Codex reads itself, so don't copy them into the brief.
-3. **Run it.** `run --effort medium|high|xhigh`. Use medium for small, well-specified blocks, high by default, and xhigh for cross-module work or hard diagnosis.
-   Tasks can take 10–60 minutes; see "Waiting" below.
-4. **Review. Don't trust the report.** Follow `references/review-checklist.md`: rerun every verification command yourself, read the critical diff, and compare file hashes for isolation.
-5. **Fix loop.** Write only the findings into a short fix brief and `resume` the session, so Codex keeps its context. Then review again.
-6. **Second opinion** for risky changes (money, trading, data writes, auth, deletion): `review --uncommitted --focus "<what to scrutinise>"`. It is read-only. Weigh its findings and don't apply them blindly.
-7. **Commit.** You (the commander) commit, one commit per block, because Codex's sandbox usually cannot write `.git`. Push, PR and deploy happen only on the user's word. Deploy only committed versions.
+1. **Plan first.** The block must exist in the plan of record and be approved by the user.
+   Slice by module (e.g. dashboard → alerts → trading). One handoff = one block, never a whole milestone.
+2. **Write the handoff.** Run `new`, then fill in the skeleton from `references/brief-template.md`:
+   - scope, files not to touch, **stop conditions**, hard limits, runnable acceptance commands;
+   - reference the plan rather than copying it. Write it in the user's language.
+3. **Run.** `run --effort medium|high|xhigh`: medium for small, well-specified blocks, high by default, xhigh for cross-module work or hard diagnosis.
+   Add `--worktree` only for destructive changes, or when you need the main checkout during the run; see the worktree caveats below.
+   Tasks can take 10–60 minutes; see "Waiting".
+4. **Review. Don't trust the report.** Follow `references/review-checklist.md`:
+   - rerun everything, check isolation hashes, read the critical diff;
+   - grade findings P0 / P1 / P2.
+   - Don't fix Codex's block yourself, except one- or two-line obvious typos. Send the rest back.
+5. **Fix loop: at most 3 rounds.** Put the P0/P1 findings in a short fix file and run `resume --brief fix.md --append-to handoff.md`, then review again.
+   If it still fails after 3 rounds, or Codex hits a stop condition, **stop and bring it to the user**. The plan probably needs to change. Never run an unattended review→fix→review loop.
+6. **Second opinion** for risky changes (money, trading, data writes, auth, deletion):
+   - `review --uncommitted --focus "<what to scrutinise>"`. It is read-only and supplements your review; it does not replace it.
+7. **Close out.** You commit, one block per commit, with refactors in their own commit. Codex's sandbox usually cannot write `.git`.
+   - Record the outcome and the commit hash in the plan of record, and add issue-log entries from Codex's candidates.
+   - Push, PR and deploy happen only on the user's word. Deploy only committed versions.
 
 ## Waiting for long tasks
 
 Pick the first one your harness supports:
-- **Background execution with completion notification** (e.g. Claude Code `run_in_background`): start it and stop working on it. Don't poll, and don't restart a task that is still running.
-- **Foreground with a long timeout** (≥ 60 min) when the harness lets you set one.
-- **Fallback:** `nohup $S run ... > run.log 2>&1 &`, then check at low frequency (every few minutes) for the `===== codex-task` line in `run.log`.
+- **Background with completion notification** (e.g. Claude Code `run_in_background`): start it and stop. Don't poll, and don't restart a task that is still running.
+- **Foreground with a long timeout** (≥ 60 min).
+- **Fallback:** `nohup $S run ... > run.log 2>&1 &`, then check at low frequency for the `===== codex-task` line.
 
-See `references/commanders.md` for per-agent notes.
+## Sandbox and worktree limits
 
-## Sandbox limits
+- Codex's `workspace-write` sandbox usually **cannot write `.git`**, **cannot listen on ports**, and **may have no network**.
+  - You do those steps locally: commits, HTTP and browser tests, network checks.
+  - Every handoff says: put anything the sandbox prevented under "Unverified", and never rewrite or weaken tests to get around it.
+- `--worktree` isolates files only.
+  - The same branch cannot be checked out in two worktrees.
+  - Ports, databases and local caches are shared, so don't run parallel tasks that touch them.
+  - Review and commit inside the worktree Codex reports, then merge.
 
-Codex's `workspace-write` sandbox typically **cannot write `.git`**, **cannot listen on ports**, and **may have no network**.
-- The commander does those steps locally: commits, HTTP and browser tests, anything that needs network.
-- Every brief must say: *anything you cannot verify because of the sandbox goes under "Unverified" in the report. Never rewrite or weaken tests to get around the sandbox.*
+## One commander per task
 
-## Hard rules for every brief
-
-Adapt these to the project, but keep the spirit:
-- No deploys, no ssh, no real orders or payments, no calls to private or production APIs.
-- Don't read or modify secrets (`.env`, keys, real configs). Don't run git write commands.
-- Tests must be hermetic: runtime files (DB, logs, caches, state) go to temp dirs, and HTTP is stubbed.
-- The report lists changed files, deviations with reasons, unverified items, and full output of the acceptance commands. It must **not end with a question**, because nobody is there to answer it.
+Only one agent orchestrates a given task. Don't let Claude Code and Antigravity both drive it, and don't use another agent's built-in orchestrator or sub-agents as a second executor. See `references/commanders.md`.
