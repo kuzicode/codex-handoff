@@ -19,7 +19,7 @@ Do this after every `run` / `resume`, before committing. While you review, don't
    - **P1**: must fix before commit. A real bug on a less critical path, a missing test for a changed failure branch, a scope violation.
    - **P2**: suggestion. Style, naming, minor simplification. Record it, don't loop on it.
    Only P0 / P1 go into the fix file.
-6. **Second opinion when risky.** Run `codex-task.sh review --uncommitted --focus "..."`, then triage its findings with the same grades.
+6. **Second opinion when risky.** Run `codex-task.sh review --uncommitted --focus "..."` (enforced read-only), then triage its findings with the same grades. It is safe to run before `resume`: resume follows the handoff's bound thread.
 7. **Fix loop.** Run `codex-task.sh resume --brief fix.md --append-to handoff.md`, then return to step 1. After 3 rounds that still fail, stop and bring it to the user.
 8. **Close out.**
    - Commit one block per commit, with a conventional prefix. Refactors go in a separate `refactor:` commit. Update the changelog if the project keeps one.

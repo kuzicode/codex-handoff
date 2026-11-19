@@ -8,14 +8,19 @@
 #                                            create a handoff file from the template; prints its path
 #   list   --cwd DIR                         list handoff files for this repo (newest first)
 #   run    --cwd DIR --brief FILE|- [opts]   start a new Codex task (workspace-write sandbox)
-#   resume --cwd DIR --brief FILE|- [opts]   continue the most recent Codex session in DIR
+#   resume --cwd DIR --brief FILE|- --append-to HANDOFF
+#                                            continue the Codex session bound to HANDOFF
+#                                            (or --thread ID; --last only if explicitly asked)
 #   review --cwd DIR [--uncommitted|--base BRANCH|--commit SHA] [--focus TEXT]
-#                                            read-only second-opinion review
+#                                            second-opinion review, enforced read-only:
+#                                            read-only sandbox, user config / MCP / plugins not loaded
 # Options:
 #   --effort low|medium|high|xhigh   reasoning effort (default: high)
 #   --worktree                       (run) let Codex work in a new managed git worktree
 #   --append-to FILE                 (run/resume) handoff file to append the report to (default: --brief)
 #   --no-append                      (run/resume) don't append the report anywhere
+#   --thread ID | --last             (resume) session to continue; default: the ID that `run`
+#                                    stored next to the handoff file (<handoff>.thread)
 #   --out DIR                        where report.md / logs go (default: <handoff>.logs/<timestamp>)
 #   --dry-run                        print the codex command instead of running it
 #
@@ -38,7 +43,7 @@ case "$cmd" in
 esac
 
 cwd="" brief="" effort="high" out="" dry=0 scope="" scope_arg="" focus=""
-slug="" plan_ref="" worktree=0 append=1 append_to=""
+slug="" plan_ref="" worktree=0 append=1 append_to="" thread="" use_last=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --cwd) cwd=${2:?--cwd needs a value}; shift 2 ;;
@@ -50,6 +55,8 @@ while [ $# -gt 0 ]; do
     --worktree) worktree=1; shift ;;
     --no-append) append=0; shift ;;
     --append-to) append_to=${2:?--append-to needs a file}; shift 2 ;;
+    --thread) thread=${2:?--thread needs an id}; shift 2 ;;
+    --last) use_last=1; shift ;;
     --dry-run) dry=1; shift ;;
     --uncommitted) scope="--uncommitted"; shift ;;
     --base) scope="--base"; scope_arg=${2:?--base needs a branch}; shift 2 ;;
@@ -111,6 +118,13 @@ fi
 [ -n "$append_to" ] || append_to=$brief
 [ "$append_to" != - ] || append=0
 [ "$append" = 0 ] || [ -f "$append_to" ] || die "--append-to file not found: $append_to"
+# The Codex thread bound to a handoff lives next to it, written by `run`.
+thread_file=""; [ "$append" = 0 ] || thread_file="${append_to%.md}.thread"
+if [ "$cmd" = resume ] && [ -z "$thread" ] && [ "$use_last" = 0 ]; then
+  [ -n "$thread_file" ] && [ -s "$thread_file" ] && thread=$(cat "$thread_file")
+  [ -n "$thread" ] || die "no Codex thread bound to this handoff: pass --append-to <handoff> (written by run), --thread ID, or --last"
+fi
+[ -z "$thread" ] || printf '%s' "$thread" | grep -qE '^[A-Za-z0-9._-]+$' || die "invalid thread id: $thread"
 
 if [ -z "$out" ]; then
   if [ "$append" = 1 ]; then
@@ -128,9 +142,23 @@ case "$cmd" in
     argv+=(--json -o "$out/report.md" -) ;;
   resume)
     # `codex exec resume` has no -C / -s: run from inside the repo and set the sandbox via config.
-    argv=(codex exec resume --last -c 'sandbox_mode="workspace-write"' -c "$effort_cfg" --json -o "$out/report.md" -) ;;
+    # Resume the thread bound to this handoff, not whatever ran last in this directory
+    # (a review or another task in the same dir would otherwise be picked up).
+    argv=(codex exec resume -c 'sandbox_mode="workspace-write"' -c "$effort_cfg" --json -o "$out/report.md")
+    if [ -n "$thread" ]; then argv+=("$thread" -); else argv+=(--last -); fi ;;
   review)
-    argv=(codex exec review -c "$effort_cfg" -o "$out/report.md")
+    # Read-only is a promise of this skill, so enforce it:
+    #  - `review` has no -s flag: set the sandbox via config;
+    #  - --ignore-user-config drops every MCP server and plugin (their tools run outside the
+    #    sandbox; plugin-provided servers can't be disabled one by one). Auth is kept.
+    #  - carry over only the user's own top-level `model` so the review uses the same model.
+    argv=(codex exec review --ignore-user-config -c 'sandbox_mode="read-only"' -c "$effort_cfg")
+    cfg_toml="${CODEX_HOME:-$HOME/.codex}/config.toml"
+    if [ -f "$cfg_toml" ]; then
+      user_model=$(awk '/^\[/{exit} /^model[ \t]*=/{sub(/^model[ \t]*=[ \t]*"/,""); sub(/".*$/,""); print; exit}' "$cfg_toml")
+      [ -z "$user_model" ] || argv+=(-c "model=\"$user_model\"")
+    fi
+    argv+=(-o "$out/report.md")
     [ -n "$scope" ] || scope="--uncommitted"
     if [ -z "$focus" ]; then
       argv+=("$scope"); [ -z "$scope_arg" ] || argv+=("$scope_arg")
@@ -169,11 +197,16 @@ fi
 rc=$?
 set -e
 
+if [ "$cmd" = run ] && [ -s "$out/events.jsonl" ]; then
+  thread=$(sed -n 's/.*"type":"thread.started","thread_id":"\([^"]*\)".*/\1/p' "$out/events.jsonl" | head -1)
+  [ -z "$thread" ] || [ -z "$thread_file" ] || printf '%s\n' "$thread" > "$thread_file"
+fi
+
 if [ -s "$out/report.md" ]; then report=$(cat "$out/report.md")
 else report="(no report produced; see $out)"; fi
 
 if [ "$cmd" != review ] && [ "$append" = 1 ]; then
-  { printf '\n## Result — %s %s exit=%s\n\n' "$cmd" "$(date '+%Y-%m-%d %H:%M')" "$rc"
+  { printf '\n## Result — %s %s exit=%s thread=%s\n\n' "$cmd" "$(date '+%Y-%m-%d %H:%M')" "$rc" "${thread:-?}"
     printf '%s\n' "$report"; } >> "$append_to"
 fi
 
@@ -183,4 +216,5 @@ printf '%s\n' "$report"
 echo
 echo "report: $out/report.md"
 [ "$cmd" = review ] || [ "$append" = 0 ] || echo "appended to: $append_to"
+[ -z "$thread" ] || [ "$cmd" = review ] || echo "codex thread: $thread"
 exit "$rc"

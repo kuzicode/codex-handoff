@@ -8,7 +8,7 @@ export CODEX_HANDOFF_HOME="$tmp/state"
 repo="$tmp/repo"; mkdir -p "$repo"; git -C "$repo" init -q
 echo "do something" > "$tmp/brief.md"
 
-# fake codex: log argv, write "-o FILE" report
+# fake codex: log argv, write "-o FILE" report, emit a thread.started event
 mkdir -p "$tmp/bin"
 cat > "$tmp/bin/codex" <<'EOF'
 #!/usr/bin/env bash
@@ -16,12 +16,14 @@ echo "$*" >> "$FAKE_CODEX_LOG"
 out=""; prev=""
 for a in "$@"; do [ "$prev" = "-o" ] && out=$a; prev=$a; done
 [ -z "$out" ] || echo "fake report for: $1 $2" > "$out"
+n=$(wc -l < "$FAKE_CODEX_LOG" | tr -d ' ')
+echo '{"type":"thread.started","thread_id":"fake-thread-'"$n"'"}'
 cat >/dev/null 2>&1 || true
 exit 0
 EOF
 chmod +x "$tmp/bin/codex"
 export FAKE_CODEX_LOG="$tmp/codex.log"; : > "$FAKE_CODEX_LOG"
-P="$tmp/bin:$PATH"
+export PATH="$tmp/bin:$PATH"   # every call below sees the fake codex, never the real one
 
 fails=0
 ok()   { echo "  ok   $1"; }
@@ -38,8 +40,17 @@ expect_out  "run sets effort"                   'model_reasoning_effort=\"medium
 expect_out  "run reads brief from file"         "< $tmp/brief.md"                  bash "$S" run --cwd "$repo" --brief "$tmp/brief.md" --dry-run
 expect_out  "run --worktree passes through"     "--worktree"                       bash "$S" run --cwd "$repo" --brief "$tmp/brief.md" --worktree --dry-run
 o=$(bash "$S" run --cwd "$repo" --brief "$tmp/brief.md" --dry-run); printf '%s' "$o" | grep -q -- '--worktree' && bad "no --worktree by default" || ok "no --worktree by default"
-expect_out  "resume uses --last"                "resume --last"                    bash "$S" resume --cwd "$repo" --brief - --dry-run
-expect_out  "resume sets sandbox via config"    'sandbox_mode=\"workspace-write\"' bash "$S" resume --cwd "$repo" --brief - --dry-run
+expect_fail "resume refuses without a bound thread" bash "$S" resume --cwd "$repo" --brief - --dry-run
+expect_out  "resume --last only when asked"     "--last"                           bash "$S" resume --cwd "$repo" --brief - --last --dry-run
+expect_out  "resume --thread uses that id"      "abc-123 -"                        bash "$S" resume --cwd "$repo" --brief - --thread abc-123 --dry-run
+expect_fail "resume rejects odd thread id"      bash "$S" resume --cwd "$repo" --brief - --thread 'a;b' --dry-run
+expect_out  "resume sets sandbox via config"    'sandbox_mode=\"workspace-write\"' bash "$S" resume --cwd "$repo" --brief - --last --dry-run
+expect_out  "review sandbox is read-only"       'sandbox_mode=\"read-only\"'      bash "$S" review --cwd "$repo" --dry-run
+expect_out  "review ignores user config (no MCP / plugins)" "--ignore-user-config"   bash "$S" review --cwd "$repo" --dry-run
+mkdir -p "$tmp/codexhome"; printf 'model = "user-model"\n[profiles.x]\nmodel = "other"\n' > "$tmp/codexhome/config.toml"
+expect_out  "review carries the user's top-level model" 'model=\"user-model\"'  env CODEX_HOME="$tmp/codexhome" bash "$S" review --cwd "$repo" --dry-run
+o=$(env CODEX_HOME="$tmp/codexhome" bash "$S" review --cwd "$repo" --dry-run 2>&1); printf '%s' "$o" | grep -q 'other' && bad "review ignores profile models" || ok "review ignores profile models"
+o=$(env CODEX_HOME="$tmp/none" bash "$S" review --cwd "$repo" --dry-run 2>&1); printf '%s' "$o" | grep -q 'model=' && bad "no model when user sets none" || ok "no model when user sets none"
 expect_out  "review --uncommitted default"      "--uncommitted"                    bash "$S" review --cwd "$repo" --dry-run
 expect_out  "review --base"                     "--base main"                      bash "$S" review --cwd "$repo" --base main --dry-run
 expect_out  "review --focus folds scope"        "relative\\ to\\ main"             bash "$S" review --cwd "$repo" --base main --focus "money paths" --dry-run
@@ -63,13 +74,19 @@ case "$h" in "$CODEX_HANDOFF_HOME/repo/"*-M3-2-alerts-block.md) ok "new path und
 expect_fail "new refuses to overwrite"          bash "$S" new --cwd "$repo" --slug "alerts block" --plan-ref "M3-2"
 [ -z "$(git -C "$repo" status --porcelain)" ] && ok "new leaves repo clean" || bad "new wrote into repo"
 
-PATH="$P" bash "$S" run --cwd "$repo" --brief "$h" --effort low >/dev/null 2>&1 && ok "run exit 0" || bad "run exit"
+bash "$S" run --cwd "$repo" --brief "$h" --effort low >/dev/null 2>&1 && ok "run exit 0" || bad "run exit"
 grep -q '^## Result — run ' "$h" && grep -q 'fake report for: exec -C' "$h" && ok "run appends Result" || bad "run append"
+tid=$(cat "${h%.md}.thread" 2>/dev/null)
+[ -n "$tid" ] && grep -q "thread=$tid" "$h" && ok "run binds thread id to handoff ($tid)" || bad "thread not stored"
+bash "$S" review --cwd "$repo" >/dev/null 2>&1   # an unrelated session in the same dir, newer than run
 echo "fix this" > "$tmp/fix.md"
-PATH="$P" bash "$S" resume --cwd "$repo" --brief "$tmp/fix.md" --append-to "$h" >/dev/null 2>&1
+bash "$S" resume --cwd "$repo" --brief "$tmp/fix.md" --append-to "$h" >/dev/null 2>&1
+tail -1 "$FAKE_CODEX_LOG" | grep -q -- "exec resume .* $tid -\$" && ok "resume continues the bound thread, not the newer review" || bad "resume thread: $(tail -1 "$FAKE_CODEX_LOG")"
+! tail -1 "$FAKE_CODEX_LOG" | grep -q -- '--last' && ok "resume did not use --last" || bad "resume used --last"
 [ "$(grep -c '^## Result — ' "$h")" = 2 ] && ok "resume appends to handoff via --append-to" || bad "resume append"
 ! grep -q 'Result' "$tmp/fix.md" && ok "fix file untouched" || bad "fix file modified"
-PATH="$P" bash "$S" run --cwd "$repo" --brief "$h" --no-append >/dev/null 2>&1
+bash "$S" run --cwd "$repo" --brief "$h" --no-append >/dev/null 2>&1
+[ "$(cat "${h%.md}.thread")" = "$tid" ] && ok "--no-append run keeps the bound thread" || bad "--no-append overwrote thread"
 [ "$(grep -c '^## Result — ' "$h")" = 2 ] && ok "--no-append respected" || bad "--no-append"
 [ -d "${h%.md}.logs" ] && ok "logs beside handoff file" || bad "logs dir"
 expect_out  "list shows handoff with results"   "(2 results)"                      bash "$S" list --cwd "$repo"

@@ -17,12 +17,18 @@ $S check                                                  # codex installed + lo
 $S new    --cwd <repo> --slug <name> --plan-ref <M3-2>   # create a handoff file, prints its path
 $S list   --cwd <repo>                                    # handoff files for this repo (resume context)
 $S run    --cwd <repo> --brief <handoff.md> [--effort high] [--worktree]
-$S resume --cwd <repo> --brief <fix.md> --append-to <handoff.md>
-$S review --cwd <repo> [--uncommitted|--base main|--commit SHA] [--focus "money paths"]
+$S resume --cwd <repo> --brief <fix.md> --append-to <handoff.md>   # continues the thread bound to it
+$S review --cwd <repo> [--uncommitted|--base main|--commit SHA] [--focus "money paths"]   # enforced read-only
 $S <run|resume|review> ... --dry-run                      # print the exact codex command
 ```
 
 After `run` / `resume`, the script appends Codex's report to the handoff file under `## Result — …` and prints it.
+- **Session binding.** `run` stores the Codex thread ID next to the handoff (`<handoff>.thread`), and `resume` continues exactly that thread.
+  It never uses "the most recent session in this directory": a review or another task run in between would otherwise be resumed by mistake.
+  `--thread ID` overrides; `--last` only if you explicitly want the old behaviour.
+- **Read-only review is enforced, not promised.**
+  - `review` runs with a read-only sandbox and `--ignore-user-config`, so no MCP servers or plugins are loaded (their tools act outside the sandbox).
+  - Only your top-level `model` from `~/.codex/config.toml` is carried over. Login is unaffected.
 It never passes `--model` (the account default is used) and never uses `--dangerously-*` flags.
 
 ## Where things live
@@ -44,6 +50,11 @@ Why the handoff file stays out of the repo:
 
 Durable outcomes go back into the plan of record: a short summary plus the commit hash on the plan's checkbox, and the issue log if a non-trivial bug was found.
 
+## When not to hand off
+
+A change of a few lines that existing tests can prove, and that doesn't touch money, trading or data-write paths, is cheaper to do yourself than one handoff round trip.
+Hand off blocks with clear boundaries and runnable acceptance commands.
+
 ## Workflow
 
 1. **Plan first.** The block must exist in the plan of record and be approved by the user.
@@ -61,7 +72,8 @@ Durable outcomes go back into the plan of record: a short summary plus the commi
 5. **Fix loop: at most 3 rounds.** Put the P0/P1 findings in a short fix file and run `resume --brief fix.md --append-to handoff.md`, then review again.
    If it still fails after 3 rounds, or Codex hits a stop condition, **stop and bring it to the user**. The plan probably needs to change. Never run an unattended review→fix→review loop.
 6. **Second opinion** for risky changes (money, trading, data writes, auth, deletion):
-   - `review --uncommitted --focus "<what to scrutinise>"`. It is read-only and supplements your review; it does not replace it.
+   - `review --uncommitted --focus "<what to scrutinise>"`. It is read-only (enforced) and supplements your review; it does not replace it.
+   - Running it between `run` and `resume` is safe, because `resume` follows the handoff's bound thread.
 7. **Close out.** You commit, one block per commit, with refactors in their own commit. Codex's sandbox usually cannot write `.git`.
    - Record the outcome and the commit hash in the plan of record, and add issue-log entries from Codex's candidates.
    - Push, PR and deploy happen only on the user's word. Deploy only committed versions.

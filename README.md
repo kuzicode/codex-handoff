@@ -44,8 +44,8 @@ codex-task.sh check                                            # Codex 是否安
 codex-task.sh new    --cwd <repo> --slug alerts --plan-ref M3-2   # 生成交接文件（仓库外），打印路径
 codex-task.sh list   --cwd <repo>                              # 列出该仓库的交接文件（新会话接手用）
 codex-task.sh run    --cwd <repo> --brief <handoff.md> --effort high [--worktree]
-codex-task.sh resume --cwd <repo> --brief fix.md --append-to <handoff.md>   # 续接同一会话修复
-codex-task.sh review --cwd <repo> --uncommitted --focus "资金路径"          # 只读第二意见
+codex-task.sh resume --cwd <repo> --brief fix.md --append-to <handoff.md>   # 续接交接文件绑定的会话修复
+codex-task.sh review --cwd <repo> --uncommitted --focus "资金路径"          # 第二意见，强制只读
 codex-task.sh run ... --dry-run                                # 只打印将执行的 codex 命令
 ```
 
@@ -54,7 +54,9 @@ codex-task.sh run ... --dry-run                                # 只打印将执
 ## 设计原则
 
 - **指挥官无关**：只依赖 `codex exec` CLI 和 bash，不依赖任何 agent 的私有插件。各 agent 的差异（怎么等长任务、读哪个规则文件）见 `references/commanders.md`。
-- **安全默认**：使用 `workspace-write` 沙箱；从不传 `--dangerously-*`，也不传 `--model`（模型用账号默认）。
+- **安全默认**：实施用 `workspace-write` 沙箱；从不传 `--dangerously-*`，也不指定型号（用你自己的配置或账号默认）。
+- **会话绑定**：`run` 把 Codex 会话 ID 存在交接文件旁（`<交接文件>.thread`），`resume` 只续这个会话，不用「本目录最近一个会话」——中间插一次 review 或别的任务也不会续错。
+- **只读是强制的**：`review` 使用只读沙箱，并以 `--ignore-user-config` 运行，因此不加载任何 MCP 服务器和插件（它们的工具不受沙箱约束），只沿用你配置里顶层的 `model`；登录不受影响。
 - **规则单一来源**：项目规则放 `AGENTS.md`，Codex 和指挥官都读它；`CLAUDE.md` / `GEMINI.md` 用软链指向它（比 `@AGENTS.md` 导入更稳，子目录启动时导入可能不生效）。
 - **不另起一份计划**：计划的唯一来源由项目规则决定（如 `docs/plan.md` 或 Issue / PR）。交接文件只是某一块的执行单，引用计划、不复述；`plan.md` / `issues.md` 只由指挥官写，Codex 在报告里列「ISS 候选」「范围外发现」。
 - **验证不外包**：沙箱里跑不了的验证（`.git`、端口、网络）报告为"未验证项"，由指挥官在本机补跑，禁止为了绕开沙箱改写测试。
@@ -73,6 +75,7 @@ codex-task.sh run ... --dry-run                                # 只打印将执
 
 ## 版本
 
+- **v0.3**（2026-11-20）：`resume` 绑定交接文件的会话 ID（不再用 `--last`）；`review` 强制只读（只读沙箱、不加载 MCP / 插件）；补充「什么时候不必交接」。
 - **v0.2**（2026-11-20）：交接文件（`new` / `list` / 结果自动追加）、停止条件与非目标、P0/P1/P2 分级、修复上限 3 轮、单写手与单指挥官、可选 `--worktree`、与项目 harness 的文档写权约定。
 - **v0.1**（2026-11-19）：`check` / `run` / `resume` / `review`。
 
