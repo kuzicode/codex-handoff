@@ -20,7 +20,7 @@ Do this after every `run` / `resume`, before committing. While you review, don't
    - **P2**: suggestion. Style, naming, minor simplification. Record it, don't loop on it.
    Only P0 / P1 go into the fix file.
 6. **Second opinion when risky.** Run `codex-task.sh review --uncommitted --focus "..."` (enforced read-only), then triage its findings with the same grades. It is safe to run before `resume`: resume follows the handoff's bound thread.
-7. **Fix loop.** Run `codex-task.sh resume --brief fix.md --append-to handoff.md`, then return to step 1. After 3 rounds that still fail, stop and bring it to the user.
+7. **Fix loop.** Run `codex-task.sh resume --brief fix.md --append-to handoff.md`, then return to step 1. After 2 rounds that still fail, stop and bring it to the user; edge-case-only leftovers go to the user earlier as "known limit or design change".
 8. **Close out.**
    - Commit one block per commit, with a conventional prefix. Refactors go in a separate `refactor:` commit. Update the changelog if the project keeps one.
    - For public repos, scan the outgoing diff for secrets, hostnames, emails and wallet addresses before pushing.

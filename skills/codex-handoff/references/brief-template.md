@@ -34,9 +34,11 @@ Stop and report instead of expanding scope if:
   Never rewrite or weaken tests to get around the sandbox.
 
 ## Acceptance
-Run from the repo root (expected result in comments):
-    <test command>                                  # expect: no FAIL
+Codex runs (repo root; expected result in comments):
     <lint / typecheck>                              # expect: clean
+    <offline unit tests related to this block>      # expect: no FAIL
+Commander runs locally (do NOT attempt in the sandbox; list under "Unverified"):
+    <build, HTTP / browser / port-listening tests, external tools such as helm>
     <hash runtime files before/after the suite>     # expect: identical
 
 ## Report format

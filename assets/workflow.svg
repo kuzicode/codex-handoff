@@ -76,7 +76,7 @@
   <text class="elabel warn" x="470" y="290">P0 / P1</text>
   <text class="elabel warn" x="592" y="290">再验</text>
   <path class="flow stop" d="M560 175 V93"/>                      <!-- review -> stop -->
-  <text class="elabel warn" x="568" y="140">修复 3 轮仍不过</text>
+  <text class="elabel warn" x="568" y="140">修复 2 轮仍不过</text>
   <path class="flow opt" d="M625 212 H745 V333"/>                 <!-- review -> 2nd opinion -->
   <path class="flow opt" d="M715 335 V228 H627"/>                 <!-- 2nd opinion -> review -->
   <text class="elabel" x="752" y="270">高风险改动</text>
@@ -120,7 +120,7 @@
     <text x="336" y="357">run 实施一块</text><text class="sub" x="336" y="373">结果追加回交接文件</text></g>
   <g class="node x"><rect x="495" y="335" width="130" height="50" rx="10"/>
     <circle class="badge" cx="509" cy="349" r="8"/><text class="num" x="509" y="352.5">6</text>
-    <text x="566" y="357">resume 修复</text><text class="sub" x="560" y="373">续接会话 · ≤ 3 轮</text></g>
+    <text x="566" y="357">resume 修复</text><text class="sub" x="560" y="373">续接会话 · ≤ 2 轮</text></g>
   <g class="node x"><rect x="695" y="335" width="140" height="50" rx="10" style="stroke-dasharray:4 3"/>
     <text x="765" y="357">review 第二意见</text><text class="sub" x="765" y="373">只读 · 可选</text></g>
 

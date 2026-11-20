@@ -69,8 +69,9 @@ Hand off blocks with clear boundaries and runnable acceptance commands.
    - rerun everything, check isolation hashes, read the critical diff;
    - grade findings P0 / P1 / P2.
    - Don't fix Codex's block yourself, except one- or two-line obvious typos. Send the rest back.
-5. **Fix loop: at most 3 rounds.** Put the P0/P1 findings in a short fix file and run `resume --brief fix.md --append-to handoff.md`, then review again.
-   If it still fails after 3 rounds, or Codex hits a stop condition, **stop and bring it to the user**. The plan probably needs to change. Never run an unattended review→fix→review loop.
+5. **Fix loop: at most 2 rounds.** Put the P0/P1 findings in a short fix file and run `resume --brief fix.md --append-to handoff.md`, then review again.
+   If it still fails after 2 rounds, or Codex hits a stop condition, **stop and bring it to the user**. The plan probably needs to change. Never run an unattended review→fix→review loop.
+   When the remaining findings only trigger in edge cases, bring them early with the options "accept as a known limit" or "change the design" instead of spending another round.
 6. **Second opinion** for risky changes (money, trading, data writes, auth, deletion):
    - `review --uncommitted --focus "<what to scrutinise>"`. It is read-only (enforced) and supplements your review; it does not replace it.
    - Running it between `run` and `resume` is safe, because `resume` follows the handoff's bound thread.
@@ -90,6 +91,7 @@ Pick the first one your harness supports:
 - Codex's `workspace-write` sandbox usually **cannot write `.git`**, **cannot listen on ports**, and **may have no network**.
   - You do those steps locally: commits, HTTP and browser tests, network checks.
   - Every handoff says: put anything the sandbox prevented under "Unverified", and never rewrite or weaken tests to get around it.
+  - Split acceptance by who can run it: Codex runs lint, typecheck and the offline tests related to the block; the commander runs builds, HTTP / browser / port-listening tests and external tools (e.g. helm) once, locally. Asking Codex to attempt them only produces failures the commander has to rerun anyway.
 - `--worktree` isolates files only.
   - The same branch cannot be checked out in two worktrees.
   - Ports, databases and local caches are shared, so don't run parallel tasks that touch them.
