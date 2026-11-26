@@ -2,7 +2,7 @@
 
 A handoff file is the **work order for one block** of an already-approved plan. It is not a second plan.
 - It references the plan of record (e.g. `docs/plan.md` M3, or an Issue / PR) instead of restating goals.
-- It adds only what the plan lacks: block scope, files not to touch, stop conditions, hard limits, runnable acceptance commands and the report format.
+- It adds only what the plan lacks: block scope, invariants, boundary cases, files not to touch, stop conditions, hard limits, two-tier acceptance commands and the report format.
 
 Create one with `codex-task.sh new --cwd <repo> --slug <name> --plan-ref <M3-2>`. That fills in the skeleton below and stores the file outside the repo.
 Write it in the user's language. After each `run` / `resume`, Codex's report is appended under `## Result — …`.
@@ -13,8 +13,12 @@ Write it in the user's language. After each `run` / `resume`, Codex's report is 
 Plan ref: <PLAN_REF>   ·   Repo: <REPO>
 
 ## Scope (this block only)
-- Do: …
+- Do: … (state outcomes and constraints; avoid over-prescribing internal concurrency/wiring unless required)
 - Key files / functions: …
+
+## Invariants & Contracts (required for state / money / concurrency / quota / clock blocks)
+- Global invariants: … (e.g. monotonic state or timestamp ordering, clock-domain separation, cross-tenant/cross-entity isolation)
+- Failure & retry matrix: … (expected behavior on 4xx/5xx/timeout/quota-exhaustion, fail-fast check ordering, retry budget headroom)
 
 ## Non-goals / do not touch
 - Out of scope: … (other modules, unrelated refactors)
@@ -30,19 +34,25 @@ Stop and report instead of expanding scope if:
 - No deploy / ssh / real orders or payments / private or production API calls.
 - Do not read or modify .env, secrets/, keys/, or real config files. Do not run git write commands.
 - Tests must be hermetic: temp dirs for runtime files (DB, logs, caches, state), and HTTP stubbed.
+- Keep touched files within the repo's size limits; if a target test file is near the limit, create a focused new test file.
 - Anything you cannot verify because of the sandbox (ports, network, .git) → "Unverified".
   Never rewrite or weaken tests to get around the sandbox.
 
 ## Acceptance
-Codex runs (repo root; expected result in comments):
+Codex runs (fast inner-loop only; repo root):
     <lint / typecheck>                              # expect: clean
-    <offline unit tests related to this block>      # expect: no FAIL
+    <block-local offline tests (focused subset)>    # expect: no FAIL
+
+Must-prove boundary cases (encode as offline assertions):
+- <adversarial scenario 1 — e.g. clock skew, partial failure, retry under quota>
+- <adversarial scenario 2>
+
 Commander runs locally (do NOT attempt in the sandbox; list under "Unverified"):
-    <build, HTTP / browser / port-listening tests, external tools such as helm>
+    <full cross-module regression suite, build, HTTP / browser / port-listening tests, external tools>
     <hash runtime files before/after the suite>     # expect: identical
 
 ## Report format
-1. Changed files
+1. Changed files (with line counts if the repo enforces file-length caps)
 2. Deviations from this handoff, with reasons
 3. Unverified items
 4. Issue candidates (non-trivial bugs found or fixed; the commander records them)
@@ -55,9 +65,17 @@ Do not end the report with a question.
 
 Write the fix round as a short file of its own, or append it under the handoff file. The session already has the context, so keep it short.
 
+If any fix **introduces or alters a lock, queue, backoff, cache, state transition, or schema column**, include a 3-line **Coupling check** so the fix does not break sibling paths or global schedulers.
+
 ```markdown
 Fix round <n> — findings to fix (keep everything else unchanged):
-1. [P0] <file:line> — <what is wrong> → <expected behaviour>
+1. [P0] <file:line> — <what is wrong> → <expected behaviour + regression assertion>
 2. [P1] …
-Re-run the acceptance commands and report in the same format. Do not end with a question.
+
+Coupling check (include whenever adding/changing a lock, backoff, queue, cache, state field, or schema):
+- Scope & release: gate only the failing I/O, release as soon as it settles, never block healthy sibling reads.
+- Cross-entity & scheduler: ensure cooldown/backoff does not starve other entities or leave stale global queue tickets.
+- Cache safety: never persist unconfirmed/lagging samples that could poison fallback paths during a later outage.
+
+Re-run the fast inner-loop acceptance commands and report in the same format. Do not end with a question.
 ```

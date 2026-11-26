@@ -5,7 +5,7 @@ The workflow is the same everywhere. What differs is how to wait for a long-runn
 | Commander | Waiting for `codex-task.sh` | Loading project rules |
 |---|---|---|
 | Claude Code | Bash tool with `run_in_background: true`. You are re-invoked when it exits, so don't poll. | `CLAUDE.md` → **symlink to `AGENTS.md`** |
-| Antigravity (IDE / `agy`) | Run in the terminal and let the task block. If commands time out, use the `nohup` fallback and check occasionally. | `AGENTS.md` (or a `GEMINI.md` symlink); workspace skills in `.agent/skills/` |
+| Antigravity (IDE / `agy`) | Run in background with completion notification (`run_command` async wait); don't poll. Use `nohup` fallback only if the harness blocks/times out. | `AGENTS.md` (or a `GEMINI.md` symlink); workspace skills in `.agent/skills/` |
 | Gemini CLI | Foreground shell command; if it times out, use the `nohup` fallback. | `GEMINI.md` → symlink to `AGENTS.md` |
 | Cursor / Copilot / others | Foreground terminal command with a long timeout, or the `nohup` fallback. | `AGENTS.md` |
 
