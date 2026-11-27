@@ -15,10 +15,16 @@ Plan ref: <PLAN_REF>   ·   Repo: <REPO>
 ## Scope (this block only)
 - Do: … (state outcomes and constraints; avoid over-prescribing internal concurrency/wiring unless required)
 - Key files / functions: …
+- Existing contracts touched: … (each reused constant / enum / aggregator / payload field → its writers and consumers, reuse or new, fallback for old caches or rows missing the field)
 
-## Invariants & Contracts (required for state / money / concurrency / quota / clock blocks)
+## Invariants & Contracts (keep the sections that apply, delete the rest)
+State / money / concurrency / quota / clock:
 - Global invariants: … (e.g. monotonic state or timestamp ordering, clock-domain separation, cross-tenant/cross-entity isolation)
 - Failure & retry matrix: … (expected behavior on 4xx/5xx/timeout/quota-exhaustion, fail-fast check ordering, retry budget headroom)
+Read-only aggregation:
+- Definitions & honesty: … (which states count, e.g. include "closing"; unknown → null or "partial", never a silent 0; existing totals or reducers that must follow the same rule)
+UI:
+- Point to the project's viewport and no-truncation rules (e.g. its conventions doc). The commander verifies them in a browser; Codex cannot.
 
 ## Non-goals / do not touch
 - Out of scope: … (other modules, unrelated refactors)
@@ -28,7 +34,9 @@ Plan ref: <PLAN_REF>   ·   Repo: <REPO>
 Stop and report instead of expanding scope if:
 - the change needs files or modules outside Scope;
 - the plan is ambiguous or contradicts the code you find;
-- acceptance cannot pass without weakening a test or a safety check.
+- acceptance cannot pass without weakening a test or a safety check;
+- correctness or state honesty would conflict with performance, request count or brevity. Correctness wins: report the conflict and never degrade silently;
+- an expected value in the boundary cases does not match what the code or data produce.
 
 ## Hard limits
 - No deploy / ssh / real orders or payments / private or production API calls.

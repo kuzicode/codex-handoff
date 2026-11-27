@@ -62,6 +62,10 @@ Hand off blocks with clear boundaries and runnable acceptance commands.
    For risky blocks (money, state machines, concurrency, clocks, shared quotas), settle **global invariants and the failure/retry matrix** during planning — most multi-round rework comes from handing off local patch instructions without stating system invariants.
 2. **Write the handoff.** Run `new`, then fill in the skeleton from `references/brief-template.md`:
    - scope (outcomes and constraints; avoid over-prescribing internal concurrency unless required), **invariants & failure/retry matrix**, **must-prove boundary cases**, files not to touch, **stop conditions**, hard limits, and two-tier acceptance commands;
+   - **ground the brief in the code before writing it.** Most remaining rework starts here, on the commander's side.
+     - For every existing constant, status enum, shared aggregator or payload field the brief names, grep its writers and consumers.
+     - State whether Codex should reuse it or build a new one, and how old caches or rows that lack a new field fall back.
+     - Expected values in must-prove cases must be **measured** from real data or code. Mark any value you guessed as *assumed*, so a mismatch gets reported instead of forced;
    - pre-check line counts of target test files if the repo enforces file-length caps, and direct Codex to create a new focused test file when near the cap;
    - reference the plan rather than copying it. Write it in the user's language.
 3. **Run.** `run --effort medium|high|xhigh`: medium for small, well-specified blocks, high by default, xhigh for cross-module work or hard diagnosis.
@@ -75,12 +79,13 @@ Hand off blocks with clear boundaries and runnable acceptance commands.
    - If it still fails after 2 rounds, or Codex hits a stop condition, **stop and bring it to the user**. Never run an unattended review→fix→review loop.
    - **Fresh-thread reset**: if a fix is stacking patches on a flawed earlier mechanism or drifting from early constraints, stop and escalate for a clean redesign or start a fresh `run` thread with consolidated invariants instead of endlessly resuming a degraded thread.
    - When the remaining findings only trigger in multi-fault edge cases with bounded recovery, bring them early with "log as known limit" vs. "fix / redesign" options instead of spending another round.
-6. **Second opinion** for risky changes (money, trading, data writes, auth, deletion):
+6. **Second opinion** for risky changes. That means money, trading, data writes, auth and deletion, and also read-only views that drive money decisions: aggregating or displaying balances, positions, PnL or risk state.
    - `review --uncommitted --focus "<what to scrutinise>"`. It is read-only (enforced) and supplements your review; it does not replace it.
    - Derive `--focus` from the new state/lock/cache/clock/schema surfaces you audited in Step 4, using neutral engineering phrasing.
    - Running it between `run` and `resume` is safe, because `resume` follows the handoff's bound thread.
 7. **Close out.** You commit, one block per commit, with refactors in their own commit. Codex's sandbox usually cannot write `.git`.
    - Record the outcome and the commit hash in the plan of record, and add issue-log entries from Codex's candidates.
+   - Append one `Review outcome` line to the handoff file (format in `references/review-checklist.md` step 8), so rework causes can be counted across handoffs.
    - Push, PR and deploy happen only on the user's word. Deploy only committed versions.
 
 ## Waiting for long tasks

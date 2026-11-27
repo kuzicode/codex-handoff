@@ -5,6 +5,7 @@ Do this after every `run` / `resume`, before committing. While you review, don't
 1. **Read the report, then distrust it.**
    - Rerun the acceptance suite locally, plus the **full cross-module regression suite** that Codex skipped in its fast inner-loop.
    - Run everything the sandbox could not: production build, HTTP / port-binding tests, browser tests, network checks, repo health / lint checks.
+   - For UI blocks, check the project's viewports in the browser, in light and dark (e.g. 1440 / 375). Make sure no core field (title, date, status, amount) is truncated.
 2. **Isolation.** Hash local runtime / data / config files before and after the suite. They must be identical, and no stray files may appear.
 3. **Read the diff & audit new risk surfaces.**
    - `git diff --stat` first, then the critical hunks.
@@ -22,7 +23,7 @@ Do this after every `run` / `resume`, before committing. While you review, don't
    - **P1**: must fix before commit. A real bug on a less critical path, cross-entity starvation, a missing test for a changed failure branch, a scope violation.
    - **P2**: suggestion. Style, naming, minor simplification, or low-impact telemetry edge case. Record it, don't loop on it.
    - **Known-limit cutoff**: only P0 / P1 go into the fix file. Multi-fault edge combinations with bounded, recoverable degradation (e.g. a 1-round delay under simultaneous cold-start + upstream outage) should be escalated as "fix vs. log as known limit" instead of looping automatically.
-6. **Second opinion when risky.**
+6. **Second opinion when risky.** That covers money, trading, writes, auth and deletion, and also read-only views of balances, positions, PnL or risk state.
    - Run `codex-task.sh review --uncommitted --focus "..."` (enforced read-only), then triage its findings with the same grades. It is safe to run before `resume`: resume follows the handoff's bound thread.
    - Build `--focus` from the risk surfaces inventoried in Step 3 using **neutral engineering phrasing** (e.g. "timestamp comparison, queue scoping, fallback caching, retry weight limits" — avoid exploit/security-attack phrasing that can trip automated content filters).
 7. **Fix loop, patch-stacking guard & closure.**
@@ -34,4 +35,5 @@ Do this after every `run` / `resume`, before committing. While you review, don't
    - Commit one block per commit, with a conventional prefix. Refactors go in a separate `refactor:` commit. Update the changelog if the project keeps one.
    - For public repos, scan the outgoing diff for secrets, hostnames, emails and wallet addresses before pushing.
    - Update the plan of record: a one-line outcome plus the commit hash. Add issue-log entries from Codex's "Issue candidates", and log tech debt from its "Out-of-scope findings".
+   - Append to the handoff file: `Review outcome: P0 n / P1 n / P2 n · fix rounds n · cause commander-context | codex-execution | sandbox | spec-change` (one cause per finding). After about ten handoffs these lines show which side the rework comes from.
 9. **Deploy.** Only committed versions, and only on the user's word. Record the commit hash in the deploy log.
